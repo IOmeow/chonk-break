@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Chonk Break",
+  "productName": "ChonkBreak",
   "version": "0.1.0",
   "identifier": "com.iomeow.chonk-break",
   "build": {

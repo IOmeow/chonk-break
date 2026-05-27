@@ -332,7 +332,7 @@ pub fn export_scene_bundle(app: &AppHandle, mode_name: String) -> Result<SceneBu
     }
 
     Ok(SceneBundleExport {
-        file_name: format!("{mode_name}.chonkscene"),
+        file_name: format!("ChonkScene_{mode_name}.chonkscene"),
         data: cursor.into_inner(),
     })
 }
