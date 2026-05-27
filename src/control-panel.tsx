@@ -88,8 +88,8 @@ function getModeLabel(mode: Mode) {
 }
 
 function buildAvailableModes(externalModes: string[]): Mode[] {
-  const set = new Set<string>(["meme", ...externalModes]);
-  if (externalModes.length > 0) set.add("battle");
+  const set = new Set<string>(externalModes);
+  if (set.size > 1) set.add("battle");
   return Array.from(set) as Mode[];
 }
 
@@ -104,6 +104,7 @@ function resolveMode(
   currentMode: Mode,
 ): Mode {
   const pool = available.length > 0 ? available : ["meme" as Mode];
+  const fallback = pool[0] ?? ("meme" as Mode);
 
   if (selection === "random") {
     return pool[Math.floor(Math.random() * pool.length)];
@@ -120,7 +121,7 @@ function resolveMode(
     return pool[next];
   }
 
-  return pool.includes(selection as Mode) ? (selection as Mode) : "meme";
+  return pool.includes(selection as Mode) ? (selection as Mode) : fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ function ControlPanel() {
   // --- mode state ---
   const [modeSelection, setModeSelection] = useState<ModeSelection>("meme");
   const [activeMode, setActiveMode] = useState<Mode>("meme");
-  const [availableModes, setAvailableModes] = useState<Mode[]>(["meme"]);
+  const [availableModes, setAvailableModes] = useState<Mode[]>([]);
   // const [byMode, setByMode] = useState<Record<string, SceneItem[]>>({});
 
   // refs for use inside callbacks / effects without stale closure issues
@@ -144,7 +145,7 @@ function ControlPanel() {
   const activeModeRef = useRef<Mode>("meme");
   const nextModeRef = useRef<Mode>("meme");   // mode queued for next break
   const modeSelectionRef = useRef<ModeSelection>("meme");
-  const availableModesRef = useRef<Mode[]>(["meme"]);
+  const availableModesRef = useRef<Mode[]>([]);
 
   useEffect(() => { activeModeRef.current = activeMode; }, [activeMode]);
   useEffect(() => { modeSelectionRef.current = modeSelection; }, [modeSelection]);
@@ -175,6 +176,31 @@ function ControlPanel() {
 
   const handlePreview = useCallback((items: SceneItem[]) => {
     void emit(SCENE_PREVIEW, items);
+  }, []);
+
+  const reloadSceneModes = useCallback(async () => {
+    const payload = await syncSceneLibrary();
+    const externalModes = payload.modes.map((m) => m.mode);
+    const available = buildAvailableModes(externalModes);
+
+    setAvailableModes(available);
+    availableModesRef.current = available;
+
+    const currentSelection = modeSelectionRef.current;
+    const fallback = (available[0] ?? "meme") as ModeSelection;
+    const normalizedSelection =
+      available.includes(currentSelection as Mode) ||
+      currentSelection === "random" ||
+      currentSelection === "carousel"
+        ? currentSelection
+        : fallback;
+
+    if (normalizedSelection !== currentSelection) {
+      modeSelectionRef.current = normalizedSelection;
+      setModeSelection(normalizedSelection);
+      await saveModeSelection(normalizedSelection);
+      await emit(MODE_CHANGED, normalizedSelection);
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -221,24 +247,14 @@ function ControlPanel() {
   useEffect(() => {
     const setup = async () => {
       const saved = await loadModeSelection();
-      const payload = await syncSceneLibrary();
+      await reloadSceneModes();
+      const available = availableModesRef.current;
 
-      const externalModes = payload.modes
-        .map((m) => m.mode)
-        .filter((m) => m !== "meme");
-
-      const available = buildAvailableModes(externalModes);
-      const modeByKey: Record<string, SceneItem[]> = {};
-      payload.modes.forEach((m) => { modeByKey[m.mode] = m.items; });
-
-      setAvailableModes(available);
-      // setByMode(modeByKey);
-      availableModesRef.current = available;
-
+      const fallback = (available[0] ?? "meme") as ModeSelection;
       const normalizedSelection =
         available.includes(saved as Mode) || saved === "random" || saved === "carousel"
           ? saved
-          : "meme";
+          : fallback;
 
       modeSelectionRef.current = normalizedSelection;
       setModeSelection(normalizedSelection);
@@ -334,7 +350,8 @@ function ControlPanel() {
   // --- mode helpers for UI ---
   const isRandom = modeSelection === "random";
   const isCarousel = modeSelection === "carousel";
-  const canChooseModes = availableModes.length > 1;
+  const sceneModeCount = availableModes.filter((m) => m !== "battle").length;
+  const canChooseModes = sceneModeCount > 1;
 
   const setMode = async (next: ModeSelection) => {
     const normalized = await saveModeSelection(next);
@@ -353,6 +370,9 @@ function ControlPanel() {
           onBack={() => setPage("main")}
           onEdit={(mode) => { setEditingMode({ name: mode, isNew: false }); setPage("edit"); }}
           onNew={() => { setEditingMode({ name: "", isNew: true }); setPage("edit"); }}
+          onImported={() => {
+            void reloadSceneModes();
+          }}
         />
       </main>
     );
@@ -373,7 +393,7 @@ function ControlPanel() {
           onSaved={() => {
             setIsPreviewing(false);
             void emit(SCENE_PREVIEW_CLEAR);
-            void syncSceneLibrary();
+            void reloadSceneModes();
           }}
           onPreview={handlePreview}
         />

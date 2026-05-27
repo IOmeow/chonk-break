@@ -58,3 +58,19 @@ pub fn list_scene_assets(
 ) -> Result<Vec<String>, String> {
     crate::scene::list_scene_assets(&app, mode_name)
 }
+
+#[tauri::command]
+pub fn export_scene_bundle(
+    app: tauri::AppHandle,
+    mode_name: String,
+) -> Result<crate::scene::SceneBundleExport, String> {
+    crate::scene::export_scene_bundle(&app, mode_name)
+}
+
+#[tauri::command]
+pub fn import_scene_bundle(
+    app: tauri::AppHandle,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    crate::scene::import_scene_bundle(&app, data)
+}

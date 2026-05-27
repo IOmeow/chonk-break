@@ -25,8 +25,6 @@ import { TIMER_TICK, SCENE_PREVIEW, SCENE_PREVIEW_CLEAR } from "./config/events"
 import ChonkScene from "./components/chonk-scene";
 import {
   createBattleSceneItems,
-  getDefaultMemeScene,
-  type SceneModeData,
 } from "./config/scenes";
 import { getChonkDuration, type SceneItem } from "./lib/chonk";
 import { syncSceneLibrary } from "./lib/scene-library";
@@ -56,17 +54,12 @@ function App() {
   useEffect(() => {
     const setup = async () => {
       const payload = await syncSceneLibrary();
-      const defaultMeme = getDefaultMemeScene();
-
-      const modesMap = new Map<string, SceneModeData>();
-      modesMap.set(defaultMeme.mode, defaultMeme);
-      payload.modes.forEach((m) => modesMap.set(m.mode, m));
 
       const byMode: Record<string, SceneItem[]> = {};
       const textByMode: Record<string, string> = {};
-      modesMap.forEach((value, key) => {
-        byMode[key] = value.items;
-        textByMode[key] = value.text;
+      payload.modes.forEach((mode) => {
+        byMode[mode.mode] = mode.items;
+        textByMode[mode.mode] = mode.text;
       });
 
       setSceneState({ byMode, textByMode });
@@ -110,12 +103,12 @@ function App() {
   const activeItems: SceneItem[] =
     activeMode === "battle"
       ? battleItems
-      : (sceneState.byMode[activeMode] ?? sceneState.byMode.meme ?? []);
+      : (sceneState.byMode[activeMode] ?? []);
 
   const activeText =
     activeMode === "battle"
       ? BATTLE_TEXT
-      : (sceneState.textByMode[activeMode] ?? sceneState.textByMode.meme ?? "Meowww Meme");
+      : (sceneState.textByMode[activeMode] ?? "");
 
   // duration for animation pacing; derived from the tick value only when break starts
   // ControlPanel owns the real settings; App just uses whatever it's told

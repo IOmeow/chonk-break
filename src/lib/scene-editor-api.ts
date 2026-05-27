@@ -19,6 +19,11 @@ export type AssetInfo = {
   url: string;
 };
 
+export type SceneBundleExport = {
+  fileName: string;
+  data: number[];
+};
+
 export async function getSceneMode(modeName: string): Promise<SceneManifest> {
   return invoke<SceneManifest>("get_scene_mode", { modeName });
 }
@@ -51,4 +56,12 @@ export async function listSceneAssets(modeName: string): Promise<AssetInfo[]> {
     const name = p.replace(/\\/g, "/").split("/").pop() ?? p;
     return { name, fullPath: p, url: convertFileSrc(p) };
   });
+}
+
+export async function exportSceneBundle(modeName: string): Promise<SceneBundleExport> {
+  return invoke<SceneBundleExport>("export_scene_bundle", { modeName });
+}
+
+export async function importSceneBundle(data: number[]): Promise<string> {
+  return invoke<string>("import_scene_bundle", { data });
 }

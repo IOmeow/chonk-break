@@ -15,7 +15,7 @@ Take breaks seriously — but make them **chonky**.
 - **System tray integration**
   - Left click: open Control Panel
   - Right click: auto start toggle / open data folder / exit app
-- Manual control from Control Panel (session control & skip state)
+- Manual control from Control Panel (mode control & skip state)
 - Simple, distraction-free design focused on enforcing healthy breaks
 
 ## How to Use

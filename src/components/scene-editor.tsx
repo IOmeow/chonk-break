@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Plus, Trash2, Upload } from "lucide-react";
+import { Save, ArrowLeft, Download, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "./ui/button";
 import { syncSceneLibrary } from "../lib/scene-library";
 import {
   deleteSceneMode,
   getSceneMode,
   importSceneAsset,
+  importSceneBundle,
   listSceneAssets,
   saveSceneMode,
+  exportSceneBundle,
   type AssetInfo,
   type SaveableItem,
 } from "../lib/scene-editor-api";
@@ -84,18 +86,42 @@ export function SceneListPage({
   onBack,
   onEdit,
   onNew,
+  onImported,
 }: {
   onBack: () => void;
   onEdit: (mode: string) => void;
   onNew: () => void;
+  onImported?: () => void;
 }) {
   const [modes, setModes] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const importBundleInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshModes = async () => {
+    const payload = await syncSceneLibrary();
+    setModes(payload.modes.map((m) => m.mode));
+  };
 
   useEffect(() => {
-    void syncSceneLibrary().then((p) =>
-      setModes(p.modes.map((m) => m.mode).filter((m) => m !== "meme")),
-    );
+    void refreshModes();
   }, []);
+
+  const onImportBundleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const data = Array.from(new Uint8Array(buffer));
+      await importSceneBundle(data);
+      await refreshModes();
+      onImported?.();
+      setError("");
+    } catch (err) {
+      setError(String(err));
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -127,6 +153,18 @@ export function SceneListPage({
         <Plus className="size-4" />
         new scene
       </Button>
+      <Button type="button" variant="outline" onClick={() => importBundleInputRef.current?.click()}>
+        <Upload className="size-4" />
+        import .chonkscene
+      </Button>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <input
+        ref={importBundleInputRef}
+        type="file"
+        accept=".chonkscene,.zip,application/zip"
+        className="hidden"
+        onChange={(e) => void onImportBundleChange(e)}
+      />
     </div>
   );
 }
@@ -156,6 +194,7 @@ export function SceneEditorPage({
   const [assets, setAssets] = useState<AssetInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importForItemRef = useRef<string | null>(null);
   const counter = useRef(0);
@@ -262,7 +301,7 @@ export function SceneEditorPage({
   const handleSave = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) { setError("Scene name is required."); return; }
-    if (trimmedName === "meme" || trimmedName === "battle") {
+    if (trimmedName === "battle") {
       setError(`"${trimmedName}" is a reserved name.`);
       return;
     }
@@ -274,6 +313,7 @@ export function SceneEditorPage({
     try {
       await saveSceneMode(trimmedName, text || trimmedName, items.map(itemToSaveable));
       onSaved();
+      onBack();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -282,11 +322,33 @@ export function SceneEditorPage({
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete scene "${name}"?`)) return;
     try {
       await deleteSceneMode(name);
       onSaved();
+      onBack();
     } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const targetName = name.trim() || initialName;
+      const bundle = await exportSceneBundle(targetName);
+      const bytes = new Uint8Array(bundle.data);
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = bundle.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setError("");
+      setNotice("Exported .chonkscene successfully.");
+    } catch (e) {
+      setNotice("");
       setError(String(e));
     }
   };
@@ -369,11 +431,19 @@ export function SceneEditorPage({
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+      {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
 
       <div className="mt-2 flex flex-col gap-2">
         <Button type="button" onClick={handleSave} disabled={saving}>
+          <Save className="size-4" />
           {saving ? "saving..." : "save scene"}
         </Button>
+        {!isNew && (
+          <Button type="button" variant="outline" onClick={handleExport}>
+            <Download className="size-4" />
+            export .chonkscene
+          </Button>
+        )}
         {!isNew && (
           <Button type="button" variant="outline" onClick={handleDelete}>
             <Trash2 className="size-4" />

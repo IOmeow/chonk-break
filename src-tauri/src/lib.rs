@@ -38,6 +38,8 @@ pub fn run() {
             command::delete_scene_mode,
             command::import_scene_asset,
             command::list_scene_assets,
+            command::export_scene_bundle,
+            command::import_scene_bundle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

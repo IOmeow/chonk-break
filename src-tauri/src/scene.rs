@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::{Cursor, Read, Write},
+    path::{Component, Path, PathBuf},
+};
 use tauri::{AppHandle, Manager};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +52,19 @@ pub struct SceneLibraryPayload {
     pub modes: Vec<SceneModeData>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneBundleExport {
+    pub file_name: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SceneBundleMeta {
+    pub mode_name: String,
+}
+
 fn get_scenes_root(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -62,10 +81,23 @@ fn validate_mode_name(name: &str) -> Result<(), String> {
         || name.contains('/')
         || name.contains('\\')
         || name.contains("..")
-        || name == "meme"
         || name == "battle"
     {
         return Err(format!("invalid mode name: {name}"));
+    }
+    Ok(())
+}
+
+fn ensure_safe_relative_path(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return Err("bundle contains absolute path".to_string());
+    }
+    for comp in p.components() {
+        match comp {
+            Component::Normal(_) => {}
+            _ => return Err("bundle contains invalid path".to_string()),
+        }
     }
     Ok(())
 }
@@ -81,7 +113,7 @@ fn scan_scene_modes(scenes_root: &PathBuf) -> Result<Vec<SceneModeData>, String>
         }
 
         let mode_name = entry.file_name().to_string_lossy().to_string();
-        if mode_name.trim().is_empty() || mode_name == "meme" {
+        if mode_name.trim().is_empty() {
             continue;
         }
 
@@ -243,4 +275,118 @@ pub fn list_scene_assets(app: &AppHandle, mode_name: String) -> Result<Vec<Strin
 
     assets.sort();
     Ok(assets)
+}
+
+pub fn export_scene_bundle(app: &AppHandle, mode_name: String) -> Result<SceneBundleExport, String> {
+    validate_mode_name(&mode_name)?;
+    let scenes_root = get_scenes_root(app)?;
+    let mode_dir = scenes_root.join(&mode_name);
+    let scene_path = mode_dir.join("scene.json");
+
+    if !scene_path.exists() {
+        return Err(format!("scene not found: {mode_name}"));
+    }
+
+    let content =
+        fs::read_to_string(&scene_path).map_err(|e| format!("read scene.json failed: {e}"))?;
+    let manifest: SceneManifest =
+        serde_json::from_str(&content).map_err(|e| format!("parse scene.json failed: {e}"))?;
+
+    let mut cursor = Cursor::new(Vec::<u8>::new());
+    {
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        let meta = SceneBundleMeta {
+            mode_name: mode_name.clone(),
+        };
+        let meta_json =
+            serde_json::to_vec_pretty(&meta).map_err(|e| format!("serialize bundle meta failed: {e}"))?;
+        zip.start_file("bundle.json", options)
+            .map_err(|e| format!("zip start bundle.json failed: {e}"))?;
+        zip.write_all(&meta_json)
+            .map_err(|e| format!("zip write bundle.json failed: {e}"))?;
+
+        zip.start_file("scene.json", options)
+            .map_err(|e| format!("zip start scene.json failed: {e}"))?;
+        zip.write_all(content.as_bytes())
+            .map_err(|e| format!("zip write scene.json failed: {e}"))?;
+
+        for item in manifest.items {
+            let file_name = Path::new(&item.src)
+                .file_name()
+                .ok_or_else(|| format!("invalid asset path in scene: {}", item.src))?
+                .to_string_lossy()
+                .to_string();
+            let asset_path = mode_dir.join(&file_name);
+            let asset_data = fs::read(&asset_path)
+                .map_err(|e| format!("read asset failed ({file_name}): {e}"))?;
+
+            zip.start_file(format!("assets/{file_name}"), options)
+                .map_err(|e| format!("zip start asset failed ({file_name}): {e}"))?;
+            zip.write_all(&asset_data)
+                .map_err(|e| format!("zip write asset failed ({file_name}): {e}"))?;
+        }
+
+        zip.finish().map_err(|e| format!("zip finish failed: {e}"))?;
+    }
+
+    Ok(SceneBundleExport {
+        file_name: format!("{mode_name}.chonkscene"),
+        data: cursor.into_inner(),
+    })
+}
+
+pub fn import_scene_bundle(app: &AppHandle, data: Vec<u8>) -> Result<String, String> {
+    let scenes_root = get_scenes_root(app)?;
+    let cursor = Cursor::new(data);
+    let mut zip = ZipArchive::new(cursor).map_err(|e| format!("open bundle failed: {e}"))?;
+
+    let mut meta_json = Vec::<u8>::new();
+    zip.by_name("bundle.json")
+        .map_err(|e| format!("bundle.json missing: {e}"))?
+        .read_to_end(&mut meta_json)
+        .map_err(|e| format!("read bundle.json failed: {e}"))?;
+
+    let meta: SceneBundleMeta =
+        serde_json::from_slice(&meta_json).map_err(|e| format!("parse bundle.json failed: {e}"))?;
+    validate_mode_name(&meta.mode_name)?;
+
+    let mode_dir = scenes_root.join(&meta.mode_name);
+    if !mode_dir.starts_with(&scenes_root) {
+        return Err("invalid mode name".to_string());
+    }
+    fs::create_dir_all(&mode_dir).map_err(|e| format!("create mode dir failed: {e}"))?;
+
+    let mut scene_json = Vec::<u8>::new();
+    zip.by_name("scene.json")
+        .map_err(|e| format!("scene.json missing: {e}"))?
+        .read_to_end(&mut scene_json)
+        .map_err(|e| format!("read scene.json failed: {e}"))?;
+
+    let manifest: SceneManifest =
+        serde_json::from_slice(&scene_json).map_err(|e| format!("parse scene.json failed: {e}"))?;
+
+    for item in &manifest.items {
+        let asset_name = Path::new(&item.src)
+            .file_name()
+            .ok_or_else(|| format!("invalid asset in scene.json: {}", item.src))?
+            .to_string_lossy()
+            .to_string();
+        ensure_safe_relative_path(&asset_name)?;
+
+        let mut asset_data = Vec::<u8>::new();
+        zip.by_name(&format!("assets/{asset_name}"))
+            .map_err(|e| format!("missing asset in bundle ({asset_name}): {e}"))?
+            .read_to_end(&mut asset_data)
+            .map_err(|e| format!("read asset failed ({asset_name}): {e}"))?;
+
+        fs::write(mode_dir.join(asset_name), asset_data)
+            .map_err(|e| format!("write asset failed: {e}"))?;
+    }
+
+    fs::write(mode_dir.join("scene.json"), &scene_json)
+        .map_err(|e| format!("write scene.json failed: {e}"))?;
+
+    Ok(meta.mode_name)
 }
