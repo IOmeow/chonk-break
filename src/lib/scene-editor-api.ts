@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { SceneLayout } from "./chonk";
+import type { MotionKey, SceneLayout } from "./chonk";
 
 export type SaveableItem = {
   src: string;
   layout: SceneLayout;
-  motionKey?: "rotate" | "slide";
+  motionKey?: MotionKey;
 };
 
 export type SceneManifest = {

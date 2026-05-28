@@ -1,4 +1,6 @@
-﻿export type ChonkProps = {
+﻿import { MotionProps } from "framer-motion";
+
+export type ChonkProps = {
   workMinutes: number;
   breakMinutes: number;
   skipMode?: boolean;
@@ -21,9 +23,11 @@ export type SceneItem = {
   src: string;
   layout: SceneLayout;
   style?: React.CSSProperties;
-  motion?: any;
-  motionKey?: "rotate" | "slide";
+  motion?: MotionProps;
+  motionKey?: MotionKey;
 };
+
+export type MotionKey = keyof typeof motions;
 
 export function getChonkDuration(
   workMinutes: number,
@@ -36,19 +40,6 @@ export function getChonkDuration(
 }
 
 export const motions = {
-  rotate(duration: number) {
-    return {
-      animate: {
-        rotate: 360,
-      },
-      transition: {
-        repeat: Infinity,
-        ease: "linear",
-        duration,
-      },
-    } as const;
-  },
-
   fade() {
     return {
       initial: {
@@ -65,6 +56,19 @@ export const motions = {
       },
     } as const;
   },
+  
+  rotate(duration: number) {
+    return {
+      animate: {
+        rotate: 360,
+      },
+      transition: {
+        repeat: Infinity,
+        ease: "linear",
+        duration,
+      },
+    } as const;
+  },
 
   slide() {
     return {
@@ -74,6 +78,19 @@ export const motions = {
       transition: {
         repeat: Infinity,
         duration: 10,
+        ease: "easeInOut",
+      },
+    } as const;
+  },
+
+  zoom(duration = 3, scale = 1.2) {
+    return {
+      animate: {
+        scale: [1, scale, 1],
+      },
+      transition: {
+        repeat: Infinity,
+        duration,
         ease: "easeInOut",
       },
     } as const;

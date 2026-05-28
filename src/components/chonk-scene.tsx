@@ -1,4 +1,4 @@
-﻿import { motion } from "framer-motion";
+﻿import { motion, type MotionProps } from "framer-motion";
 import { motions, type SceneItem } from "../lib/chonk";
 
 function toResponsiveStyle(item: SceneItem): React.CSSProperties {
@@ -9,8 +9,6 @@ function toResponsiveStyle(item: SceneItem): React.CSSProperties {
     z,
     anchorX = "center",
     anchorY = "center",
-    offsetX = "0px",
-    offsetY = "0px",
   } = item.layout;
 
   const style: React.CSSProperties = {
@@ -30,7 +28,7 @@ function toResponsiveStyle(item: SceneItem): React.CSSProperties {
 
   const baseTranslateX = anchorX === "center" ? "-50%" : "0";
   const baseTranslateY = anchorY === "center" ? "-50%" : "0";
-  style.transform = `translate(${baseTranslateX}, ${baseTranslateY}) translate(${offsetX}, ${offsetY})`;
+  style.transform = `translate(${baseTranslateX}, ${baseTranslateY})`;
 
   return style;
 }
@@ -40,15 +38,15 @@ function resolveMotion(item: SceneItem, duration: number) {
     return item.motion;
   }
 
-  if (item.motionKey === "rotate") {
-    return motions.rotate(duration);
+  if (!item.motionKey) {
+    return undefined;
   }
 
-  if (item.motionKey === "slide") {
-    return motions.slide();
-  }
+  const motionFactory = motions[item.motionKey] as (
+    ...args: any[]
+  ) => MotionProps;
 
-  return undefined;
+  return motionFactory(duration);
 }
 
 export default function ChonkScene({
@@ -88,13 +86,13 @@ export default function ChonkScene({
 
           if (motionProps) {
             return (
-              <motion.div
-                key={`${sceneKey ?? "scene"}-${item.src}-${i}`}
-                style={toResponsiveStyle(item)}
-                {...motionProps}
-              >
-                {content}
-              </motion.div>
+              <div key={`${sceneKey ?? "scene"}-${item.src}-${i}`} style={toResponsiveStyle(item)}>
+                <motion.div
+                  {...motionProps}
+                >
+                  {content}
+                </motion.div>
+              </div>
             );
           }
 

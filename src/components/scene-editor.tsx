@@ -13,7 +13,7 @@ import {
   type AssetInfo,
   type SaveableItem,
 } from "../lib/scene-editor-api";
-import type { SceneItem, SceneLayout } from "../lib/chonk";
+import { motions, type MotionKey, type SceneItem, type SceneLayout } from "../lib/chonk";
 
 // ─── draft types ──────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ type ItemDraft = {
   id: string;
   src: string;
   layout: ItemLayout;
-  motionKey: "rotate" | "slide" | "";
+  motionKey: MotionKey | "";
 };
 
 function defaultLayout(): ItemLayout {
@@ -214,7 +214,7 @@ export function SceneEditorPage({
         orbitX: item.layout.orbitX ?? "",
         orbitY: item.layout.orbitY ?? "",
       },
-      motionKey: (item.motionKey ?? "") as "rotate" | "slide" | "",
+      motionKey: (item.motionKey ?? "") as MotionKey | "",
     }));
 
   // Notify ControlPanel that the editor is open (pauses timer)
@@ -482,6 +482,7 @@ function ItemCard({
   onImport: () => void;
   onRemove: () => void;
 }) {
+  const motionKeys = (Object.keys(motions) as MotionKey[]).filter((key) => key !== "fade");
   return (
     <div className="rounded-md border border-input p-3 flex flex-col gap-2">
       {/* Asset row */}
@@ -556,15 +557,27 @@ function ItemCard({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">motion</label>
+          <label className="text-xs text-muted-foreground">
+            motion
+          </label>
+
           <select
             className="h-8 rounded-md border border-input bg-background px-1 text-xs no-drag"
             value={item.motionKey}
-            onChange={(e) => onUpdate({ motionKey: e.target.value as "rotate" | "slide" | "" })}
+            onChange={(e) =>
+              onUpdate({
+                motionKey:
+                  (e.target.value || undefined) as MotionKey | undefined,
+              })
+            }
           >
             <option value="">none</option>
-            <option value="rotate">rotate</option>
-            <option value="slide">slide</option>
+
+            {motionKeys.map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
           </select>
         </div>
       </div>
