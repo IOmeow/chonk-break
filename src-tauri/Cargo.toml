@@ -1,8 +1,8 @@
 [package]
 name = "chonk-break"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.1.1"
+description = "Chonk Break is a lightweight desktop break timer that helps you balance work and rest."
+authors = ["IOmeow"]
 edition = "2021"
 
 [lib]
